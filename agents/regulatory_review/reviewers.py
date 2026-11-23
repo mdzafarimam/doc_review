@@ -1,9 +1,29 @@
 """Reviewer agents, each focused on one aspect of regulatory document review."""
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from agents.regulatory_review.llm import get_llm
 from agents.regulatory_review.state import ReviewState
+
+
+def prepare_document(state: ReviewState) -> dict:
+    """Derive the `document` field from the chat history.
+
+    Lets this graph be driven by LangGraph Studio's Chat UI: the content of
+    the latest human message is treated as the regulatory document text to
+    review. If `document` was already supplied directly (e.g. programmatic
+    invocation), it is left untouched.
+    """
+    if state.get("document"):
+        return {}
+
+    for message in reversed(state.get("messages", [])):
+        is_human = isinstance(message, HumanMessage) or getattr(message, "type", None) == "human"
+        if is_human:
+            content = message.content if hasattr(message, "content") else message.get("content", "")
+            return {"document": content}
+
+    return {"document": ""}
 
 
 def _run_reviewer(reviewer_name: str, system_prompt: str, document: str) -> dict:
@@ -93,4 +113,7 @@ def supervisor_agent(state: ReviewState) -> dict:
         HumanMessage(content=f"Specialist reviewer findings:\n\n{combined_findings}"),
     ]
     response = llm.invoke(messages)
-    return {"final_report": response.content}
+    return {
+        "final_report": response.content,
+        "messages": [AIMessage(content=response.content)],
+    }

@@ -23,6 +23,7 @@ from agents.regulatory_review.reviewers import (
     clarity_agent,
     completeness_agent,
     compliance_agent,
+    prepare_document,
     safety_agent,
     supervisor_agent,
 )
@@ -39,15 +40,19 @@ def build_review_graph():
     """
     graph = StateGraph(ReviewState)
 
+    graph.add_node("prepare_document", prepare_document)
     graph.add_node("completeness", completeness_agent)
     graph.add_node("compliance", compliance_agent)
     graph.add_node("clarity", clarity_agent)
     graph.add_node("safety", safety_agent)
     graph.add_node("supervisor", supervisor_agent)
 
-    # Fan-out: all four specialist reviewers run in parallel from START.
+    graph.add_edge(START, "prepare_document")
+
+    # Fan-out: all four specialist reviewers run in parallel after the
+    # document has been resolved from either direct input or chat messages.
     for reviewer_node in ("completeness", "compliance", "clarity", "safety"):
-        graph.add_edge(START, reviewer_node)
+        graph.add_edge("prepare_document", reviewer_node)
         graph.add_edge(reviewer_node, "supervisor")
 
     graph.add_edge("supervisor", END)
@@ -58,7 +63,9 @@ def build_review_graph():
 def review_document(document_text: str) -> ReviewState:
     """Run the full multi-agent review over the given document text."""
     app = build_review_graph()
-    result = app.invoke({"document": document_text, "reviews": [], "final_report": ""})
+    result = app.invoke(
+        {"messages": [], "document": document_text, "reviews": [], "final_report": ""}
+    )
     return result
 
 
